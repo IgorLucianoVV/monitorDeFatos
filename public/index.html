@@ -1,0 +1,230 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Checagem ao Vivo</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..800&family=Source+Serif+4:ital,opsz,wght@0,8..60,400..600;1,8..60,400..600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <a class="skip" href="#feed">Pular para as checagens</a>
+
+  <!-- ============ Barra superior: estado + ação principal ============ -->
+  <header class="topbar">
+    <div class="brand">
+      <span class="live" id="live" data-state="idle" role="status" aria-live="polite">
+        <span class="live-dot" aria-hidden="true"></span><span id="liveText">Parado</span>
+      </span>
+      <h1>Checagem ao vivo</h1>
+    </div>
+
+    <div class="run" role="group" aria-label="Iniciar análise">
+      <div class="segmented" role="radiogroup" aria-label="O que analisar">
+        <label title="Uma aba do navegador com a transmissão (YouTube, TV online)">
+          <input type="radio" name="source" value="tab" checked /><span>Transmissão</span>
+        </label>
+        <label title="Um arquivo de vídeo ou áudio do seu computador">
+          <input type="radio" name="source" value="file" /><span>Arquivo</span>
+        </label>
+        <label title="O som do ambiente pelo microfone">
+          <input type="radio" name="source" value="mic" /><span>Microfone</span>
+        </label>
+      </div>
+      <button class="btn primary big" id="btnRun" aria-describedby="runHint">
+        <span class="ico" aria-hidden="true">▶</span><span class="lbl">Iniciar análise</span>
+      </button>
+      <input type="file" id="fileInput" accept="video/*,audio/*" hidden />
+    </div>
+
+    <div class="tools">
+      <button class="btn quiet" id="btnSettings" title="Configurações (transcrição e chaves de API)">
+        <span aria-hidden="true">⚙</span> Configurações
+      </button>
+      <button class="btn quiet icon" id="btnHelp" title="Ajuda e atalhos (?)" aria-label="Ajuda e atalhos">?</button>
+    </div>
+    <p class="run-hint" id="runHint"></p>
+  </header>
+
+  <main class="layout">
+    <!-- ============ Palco: vídeo + transcrição (mesma região = mesmo assunto) ============ -->
+    <section class="stage" aria-label="Vídeo e transcrição">
+      <div class="screen" id="screen" data-mode="empty">
+        <video id="video" playsinline muted></video>
+
+        <div class="screen-empty" id="screenEmpty">
+          <ol class="steps">
+            <li id="stepKeys"><span class="step-mark" aria-hidden="true"></span>
+              <div><b>Cadastre as chaves</b><span id="stepKeysText">Pelo menos um modelo de IA e um provedor de busca.</span></div>
+            </li>
+            <li><span class="step-mark" aria-hidden="true"></span>
+              <div><b>Escolha o que analisar</b><span>Uma transmissão em outra aba, um arquivo ou o microfone.</span></div>
+            </li>
+            <li><span class="step-mark" aria-hidden="true"></span>
+              <div><b>Clique em Iniciar análise</b><span>As afirmações checáveis aparecem à direita com veredito e fontes.</span></div>
+            </li>
+          </ol>
+        </div>
+
+        <div class="screen-mic" id="screenMic">
+          <span class="mic-ico" aria-hidden="true">🎙</span>
+          <p>Ouvindo o microfone</p>
+        </div>
+
+        <div class="screen-stopped">
+          <p><b>Análise parada.</b> A transcrição e as checagens continuam disponíveis. Clique em Iniciar análise para retomar.</p>
+        </div>
+
+        <!-- Tarja (lower third): o último veredito, como nas checagens de TV -->
+        <div class="lower-third" id="lowerThird" hidden aria-hidden="true">
+          <span class="lt-verdict"><span class="v-ico"></span><span class="v-txt"></span></span>
+          <div class="lt-body">
+            <span class="lt-who"></span>
+            <q class="lt-claim"></q>
+            <span class="lt-sum"></span>
+          </div>
+        </div>
+        <span class="checking-pill" id="checkingPill" hidden></span>
+      </div>
+
+      <div class="meter-row">
+        <div class="level" aria-hidden="true"><span id="levelBar"></span></div>
+        <span class="engine-chip" id="engineChip"></span>
+      </div>
+
+      <div class="speakers-row">
+        <span class="speakers-hint" id="spkHint">Quem está falando</span>
+        <div class="speakers" id="speakers" role="group" aria-label="Oradores"></div>
+        <button class="btn quiet small" id="btnAddSpk">+ Orador</button>
+      </div>
+
+      <div class="transcript" id="transcript" aria-label="Transcrição">
+        <p class="transcript-empty" id="transcriptEmpty">A transcrição aparece aqui enquanto o vídeo é analisado.</p>
+      </div>
+      <div class="interim" id="interim" aria-hidden="true"></div>
+
+      <form class="manual" id="manual" autocomplete="off">
+        <label class="sr-only" for="manualInput">Checar uma frase</label>
+        <input id="manualInput" placeholder="Digite ou cole uma frase para checar" maxlength="600" />
+        <button class="btn" type="submit">Checar frase</button>
+      </form>
+    </section>
+
+    <!-- ============ Checagens ============ -->
+    <section class="feed" id="feed" aria-label="Checagens" tabindex="-1">
+      <div class="feed-head">
+        <h2>Checagens</h2>
+        <span class="queue" id="queueInfo" aria-live="polite"></span>
+        <button class="btn quiet small" id="btnExport" title="Baixar transcrição e checagens em JSON">Exportar</button>
+      </div>
+      <div class="filters" role="radiogroup" aria-label="Filtrar checagens">
+        <label><input type="radio" name="filter" value="all" checked /><span>Todas <b data-count="all">0</b></span></label>
+        <label class="f-FALSO"><input type="radio" name="filter" value="FALSO" /><span><i aria-hidden="true">✕</i> Falso <b data-count="FALSO">0</b></span></label>
+        <label class="f-IMPRECISO"><input type="radio" name="filter" value="IMPRECISO" /><span><i aria-hidden="true">≈</i> Impreciso <b data-count="IMPRECISO">0</b></span></label>
+        <label class="f-VERDADEIRO"><input type="radio" name="filter" value="VERDADEIRO" /><span><i aria-hidden="true">✓</i> Verdadeiro <b data-count="VERDADEIRO">0</b></span></label>
+        <label class="f-SEM_EVIDENCIA"><input type="radio" name="filter" value="SEM_EVIDENCIA" /><span><i aria-hidden="true">?</i> Sem evidência <b data-count="SEM_EVIDENCIA">0</b></span></label>
+      </div>
+      <div class="cards" id="cards" data-filter="all" aria-live="polite" aria-relevant="additions">
+        <p class="cards-empty" id="cardsEmpty">Nenhuma afirmação checada ainda. Opiniões, promessas e perguntas são ignoradas; só fatos verificáveis entram aqui.</p>
+      </div>
+    </section>
+  </main>
+
+  <div class="toasts" id="toasts" role="status" aria-live="polite"></div>
+
+  <!-- ============ Configurações ============ -->
+  <dialog class="modal" id="settings" aria-labelledby="settingsTitle">
+    <form method="dialog" id="settingsForm" autocomplete="off">
+      <header class="modal-head">
+        <h2 id="settingsTitle">Configurações</h2>
+        <button class="btn quiet icon" value="cancel" formnovalidate aria-label="Fechar">✕</button>
+      </header>
+      <div class="modal-body">
+        <fieldset>
+          <legend>Transcrição</legend>
+          <p class="note">Define como a fala é convertida em texto e se os oradores são separados automaticamente.</p>
+          <div class="engines" id="engines"></div>
+        </fieldset>
+        <fieldset>
+          <legend>Chaves de API</legend>
+          <p class="note">Ficam salvas no servidor e valem na hora. Uma chave salva aparece só pelos 4 últimos caracteres; deixe o campo vazio para mantê-la.</p>
+          <div class="keys" id="keyFields"></div>
+        </fieldset>
+        <fieldset>
+          <legend>Teste da busca</legend>
+          <p class="note">Faz uma busca de exemplo em cada provedor configurado e mostra se encontrou fontes confiáveis. Use depois de salvar as chaves.</p>
+          <button type="button" class="btn" id="btnDiag">Testar busca</button>
+          <ul class="diag" id="diag" aria-live="polite"></ul>
+        </fieldset>
+      </div>
+      <p class="modal-msg" id="settingsMsg" role="alert"></p>
+      <footer class="modal-foot">
+        <button class="btn quiet" value="cancel" formnovalidate>Cancelar</button>
+        <button class="btn primary" id="btnSaveSettings" type="submit" value="save">Salvar configurações</button>
+      </footer>
+    </form>
+  </dialog>
+
+  <!-- ============ Ajuda ============ -->
+  <dialog class="modal" id="help" aria-labelledby="helpTitle">
+    <form method="dialog">
+      <header class="modal-head">
+        <h2 id="helpTitle">Como ler as checagens</h2>
+        <button class="btn quiet icon" value="close" aria-label="Fechar">✕</button>
+      </header>
+      <div class="modal-body help">
+        <dl class="legend">
+          <div class="v-VERDADEIRO"><dt><i aria-hidden="true">✓</i> Verdadeiro</dt><dd>As fontes confirmam. Arredondamentos razoáveis são aceitos.</dd></div>
+          <div class="v-IMPRECISO"><dt><i aria-hidden="true">≈</i> Impreciso</dt><dd>Tem base real, mas o número, o período ou o contexto está distorcido.</dd></div>
+          <div class="v-FALSO"><dt><i aria-hidden="true">✕</i> Falso</dt><dd>As fontes contradizem a afirmação.</dd></div>
+          <div class="v-SEM_EVIDENCIA"><dt><i aria-hidden="true">?</i> Sem evidência</dt><dd>Não há dados confiáveis suficientes para concluir.</dd></div>
+        </dl>
+        <p>Toda checagem usa só fontes oficiais, científicas, agências de notícias e checadores reconhecidos. Se nenhuma fonte sustentar o veredito, ele vira “Sem evidência”. Confira as fontes antes de divulgar.</p>
+        <h3>Atalhos</h3>
+        <ul class="shortcuts">
+          <li><kbd>1</kbd>–<kbd>9</kbd> escolher quem está falando (transcrição sem oradores automáticos)</li>
+          <li><kbd>?</kbd> abrir esta ajuda</li>
+          <li><kbd>Esc</kbd> fechar janelas</li>
+          <li>Clique numa checagem para ver o trecho da fala; num arquivo, o vídeo volta para esse momento.</li>
+        </ul>
+      </div>
+    </form>
+  </dialog>
+
+  <template id="cardTpl">
+    <article class="card pending" tabindex="0">
+      <header class="card-head">
+        <span class="verdict"><span class="v-ico" aria-hidden="true"></span><span class="v-txt">Na fila</span></span>
+        <span class="who"></span>
+        <time class="time"></time>
+      </header>
+      <q class="claim"></q>
+      <ol class="progress" aria-label="Andamento">
+        <li data-step="planejar">Planejar busca</li>
+        <li data-step="buscar">Buscar fontes</li>
+        <li data-step="julgar">Avaliar</li>
+      </ol>
+      <p class="progress-detail"></p>
+      <div class="body">
+        <p class="summary"></p>
+        <p class="data"></p>
+        <div class="confidence"><span class="conf-label"></span><span class="conf-bar"><span></span></span></div>
+        <ul class="sources"></ul>
+        <p class="warn"></p>
+        <details class="more">
+          <summary>Explicação e como foi checado</summary>
+          <p class="explain"></p>
+          <ul class="trace"></ul>
+        </details>
+      </div>
+      <div class="card-actions" hidden>
+        <button class="btn quiet small" data-act="retry">Checar de novo</button>
+      </div>
+    </article>
+  </template>
+
+  <script src="app.js" type="module"></script>
+</body>
+</html>
